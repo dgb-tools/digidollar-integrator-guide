@@ -1,6 +1,6 @@
 # DigiDollar Integrator's Guide — what you can safely promise
 
-**Version 0.1 · 2026-09-05.** Describes DigiByte Core **v9.26.5** (the current
+**Version 0.1.1 · 2026-09-05.** Describes DigiByte Core **v9.26.5** (the current
 mainnet release). Every source file cited below was checked byte-identical on the
 `v9.26.4` and `v9.26.5` tags and on `develop` on 2026-09-05; if a later release touches
 one, the pin here is what this text describes. DigiDollar has been active on DigiByte mainnet since block
@@ -9,15 +9,15 @@ permanent guarantee — the founder characterizes DigiDollar as still under acti
 development, and no change described as possible should be treated as committed
 until it is implemented, tested, and given an activation path.
 
-**Sources, with attribution.** The design rulings in §§3–8 are the written answers
+**Sources, with attribution.** The design rulings in §§2–7 are the written answers
 of Jared Tate (DigiByte founder and maintainer) to this author's integrator
 questions, September 2026, quoted with permission on the condition that this
 document pins the release it describes and does not present current behavior as a
-mainnet guarantee. The output-floor rules in §2 are from Shen (DigiByte Core) in
+mainnet guarantee. The output-floor rules in §1 are from Shen (DigiByte Core) in
 [Core Discussion #425](https://github.com/orgs/DigiByte-Core/discussions/425), July
 2026. Chain-level facts are from this author's decoding of mainnet transactions
-([week-one census, v3](https://github.com/dgb-tools) — exact reconciliation with the
-node) and from operating oracle slot 29 since activation. Where a code reference is
+([week-one census, v3](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) — exact reconciliation with the
+node; raw records alongside) and from operating oracle slot 29 since activation. Where a code reference is
 given, it is the file the founder cited; verify against the release you build on.
 
 If you find an error, treat it as ours until shown otherwise, and open an issue.
@@ -95,9 +95,10 @@ DD transaction inside 80 data bytes.
 
 **Three more rules you hit on day one:**
 
-- **DD inputs must be confirmed.** Mempool policy rejects spending or redeeming DD
-  outputs created by unconfirmed transactions (`"Cannot spend unconfirmed DD
-  inputs"`, `"Cannot redeem unconfirmed DD inputs"`, `src/digidollar/validation.cpp`).
+- **DD inputs must be confirmed.** Consensus — not merely relay policy — rejects
+  spending or redeeming DD outputs created by unconfirmed transactions
+  (`TX_CONSENSUS`, reject reason `dd-input-amounts-unknown`; messages `"Cannot spend unconfirmed DD
+  inputs"` and `"Cannot redeem unconfirmed DD inputs"`, `src/digidollar/validation.cpp`).
   Chained unconfirmed DD payments — normal for DGB — do not work for DD.
 - **Meaning comes from the record, not from labels.** Classify by the type byte and
   the declared outputs; do not infer from an explorer's caption. The public explorer
@@ -105,8 +106,9 @@ DD transaction inside 80 data bytes.
   ([Discussion #446](https://github.com/orgs/DigiByte-Core/discussions/446)). An
   unknown type byte is undecodable — refuse to classify rather than guess.
 - **Fees are DGB.** DD outputs carry zero DGB, so every DD transaction needs a DGB
-  input for fees; a fee-sponsorship design ("Paymaster", Shen, working branch) is a
-  proposal, not upstream. And reconcile balances from the chain, not a wallet UI:
+  input for fees. A fee-sponsorship design ("Paymaster", Shen) exists as a concept
+  draft with a regtest prototype — [Discussion #430](https://github.com/orgs/DigiByte-Core/discussions/430)
+  — and is not a proposed consensus change. And reconcile balances from the chain, not a wallet UI:
   operators reported DD change not appearing in the Core wallet (Gitter, Aug 2026).
 
 A reference decoder with test vectors exists: `dgb-digidollar-codec` 0.2.0 on npm
@@ -114,8 +116,9 @@ A reference decoder with test vectors exists: `dgb-digidollar-codec` 0.2.0 on np
 agents. Neither is authoritative; both are cross-checks.
 
 **Collateral.** Vault collateral is a taproot output whose internal key is a
-NUMS point (`COLLATERAL_NUMS_POINT_BYTES`, `src/digidollar/scripts.h`) — no key-path
-spend exists, and both script paths begin with `<lockHeight> OP_CHECKLOCKTIMEVERIFY`.
+NUMS point (`COLLATERAL_NUMS_POINT_BYTES`, `src/digidollar/scripts.h`) — no known
+key-path private key exists, so the construction is intended to disable key-path
+spending — and both script paths begin with `<lockHeight> OP_CHECKLOCKTIMEVERIFY`.
 The source comment reads *"NO early redemption, NO forced liquidation, NO
 exceptions."* Lock tiers observed on mainnet: 0 (~1 hour, test), 1 (30 days), 2 (90
 days), 3 (180 days), 4 (1 year), 5 (2 y), 6 (3 y), 7 (5 y), 8 (7 y), 9 (10 y).
@@ -159,11 +162,11 @@ vault or an unconditional protocol redemption at $1.*
 - While unspent, that vault stays inside aggregate collateral, supply, and position
   counts (`SystemHealthMonitor::ScanUTXOSet()`, `src/digidollar/health.cpp`;
   `DigiDollarStatsIndex::CustomAppend()`, `src/index/digidollarstatsindex.cpp`).
-  Permanently lost-key collateral is permanently locked *while still appearing in
-  backing figures.* There is **no salvage, reassignment, liquidation, or
-  timeout-cleanup mechanism.**
-- Therefore: *"aggregate collateral is not equivalent to economically actionable
-  redemption liquidity."* Abandoned vaults make backing statistics look stronger
+  Under v9.26.5, collateral whose owner key is unavailable stays locked *while still
+  appearing in backing figures*; the current rules provide **no salvage,
+  reassignment, liquidation, or timeout-cleanup path.**
+- Therefore, in the founder's words (answer 2): *"aggregate collateral is not
+  equivalent to economically actionable redemption liquidity."* Abandoned vaults make backing statistics look stronger
   than the collateral actually available to settle current holders.
 - Fungibility means every DD output is the same cents-denominated unit; transfers
   carry no vault provenance, maturity, seniority, or collateral rights forward. A
@@ -227,7 +230,8 @@ guarantee that every holder or vault owner can exit.*
 - The roster is rooted in chain parameters. **Adding, removing, rotating, or
   replacing keys is a coordinated consensus upgrade with an activation plan** — not
   an operator-local change. If quorum is lost for days, **there is no automatic
-  fallback oracle**; mints and redemptions requiring a current quote stop until
+  fallback oracle**; once the last accepted quote is no longer current
+  (`validity_blocks`, 20 at the time of writing), mints and redemptions stop until
   quorum recovers or an upgrade changes the roster.
 - **Transfers do not need an oracle quote.** Mempool admission requires a recent
   quote for mint and redeem only (`DigiDollarMempoolTxRequiresOracleQuote()`,
@@ -258,7 +262,7 @@ protection — which types depends on the tier reached. Thresholds in
 | ≥ 20% over one hour | new **minting** frozen |
 | ≥ 30% over 24 hours | **all** DD operations frozen — including ordinary transfers |
 | ≥ 50% over seven days | **emergency** all-operations freeze |
-| release | after the **8,640-block cooldown (~36 hours)** *and* every window back under a **stricter** bar: 1h < 10%, 24h < 20%, 7d < 30% (`VolatilityMonitor::UpdateState()`, `src/consensus/volatility.cpp` — the recovery checks reuse the next-lower trigger constants, so a freeze never lifts at the level that caused it) |
+| release | no earlier than the block *after* the **8,640-block cooldown (~36 hours)** — `currentHeight > cooldownEndHeight` — *and* only once every window is back under a **stricter** bar: 1h < 10%, 24h < 20%, 7d < 30% (`VolatilityMonitor::UpdateState()`, `src/consensus/volatility.cpp` — the recovery checks reuse the next-lower trigger constants, so a freeze never lifts at the level that caused it) |
 
 State derives deterministically from accepted on-chain oracle prices, heights, and
 block order (`VolatilityMonitor::UpdateState()`), and follows reorgs
@@ -266,8 +270,9 @@ block order (`VolatilityMonitor::UpdateState()`), and follows reorgs
 consensus-sensitive code that should be supported by explicit restart, replay,
 disconnect, and competing-chain tests before being treated as finalized.
 
-**For a merchant, "settled" means a confirmed transaction established ownership of
-a valid DD UTXO.** It does not mean the balance will remain continuously
+**The founder's definition (answer 7): "settled" means a confirmed transaction
+established ownership of a valid DD UTXO.** That is ownership under the current
+chain tip, not irreversible finality — reorgs apply as for any UTXO. It does not mean the balance will remain continuously
 transferable or redeemable: during an all-operations freeze it is recorded but
 temporarily non-transferable and non-redeemable.
 
@@ -280,7 +285,8 @@ temporarily non-transferable and non-redeemable.
   margin, not a protocol number.
 - Treat received DD as *held*, not *spendable*: before promising any outbound DD
   transfer (refund, payout), read the volatility-protection state from the
-  `getdigidollarstats` RPC, and be prepared for a ~36-hour hold.
+  `getdigidollarstats` RPC, and be prepared for a hold of at least ~36 hours — longer
+  until every recovery bar is met.
 - Never let a valid DD balance in your UI imply a $1 redemption right (§2).
 
 ---
@@ -326,7 +332,8 @@ the chain, because owner willingness and key availability are not on it.
 
 **Public instruments** (independent, non-authoritative — reconcile against your own
 node): [dgbinsights.com](https://dgbinsights.com) — a 5-minute snapshot feed since
-activation, a permanent daily archive, the week-one census with raw records, and a
+activation, a daily archive retained since activation (as of 2026-09-05), the
+[week-one census](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) with raw records, and a
 documented API with the units traps spelled out. A position scanner producing the
 maturity ladder, matured-unredeemed set, and an oracle participation history from
 the coinbase bitmaps is in progress there.
@@ -343,18 +350,24 @@ new chain scan.
 
 | you may say | you may not say |
 |---|---|
-| "DD is an overcollateralized, USD-denominated synthetic asset native to DigiByte." | "DD is redeemable for $1." |
-| "Collateral ratio is X% (aggregate solvency)." | "Every DD is backed by $X of accessible collateral." |
+| "DD is a USD-denominated synthetic asset minted against overcollateralized vaults on DigiByte." | "DD is redeemable for $1." |
+| "Aggregate collateralization is X% — a system metric, not actionable solvency." | "Every DD is backed by $X of accessible collateral." |
 | "Redemption releases collateral to the vault owner after maturity, against the required DD burn and the owner's signature." | "Holders can redeem." |
 | "Settled = a confirmed DD UTXO you control (Core accepts spends at 1 confirmation; choose your own fulfilment depth)." | "Settled = always transferable." |
-| "Transfers continue through a pure oracle outage; mint and redeem stop; a volatility freeze can still halt transfers." | "DD never freezes." |
-| "Consensus tests establish validity and conservation." | "The peg is proven." |
+| "Transfers can continue through a pure oracle outage; once the last valid quote expires, mint and redeem stop. A volatility freeze can separately halt transfers." | "DD never freezes." |
+| "Consensus tests cover validity and conservation rules under tested conditions." | "The peg is proven." |
 | "Behavior described for Core v9.26.5, as of Sept 2026." | anything as a permanent guarantee |
 
 ---
 
 ## 10. Changelog and terms
 
+- **0.1.1 — 2026-09-05.** Review corrections on the published text: header section
+  pins; confirmed-only DD inputs stated as consensus, not policy; Paymaster cited to
+  Discussion #430 as a concept draft; NUMS wording; the quote-validity grace before
+  mint/redeem stop; §3 lock wording without permanence claims; §6 hold duration and
+  the founder's "settled" definition attributed; §8 archive wording; §9 rows; the
+  week-one census linked to its published record.
 - **0.1 — 2026-09-05.** First release. Founder answers incorporated with permission;
   #425 floors; census v3 decoding rules; incident observation; DCA tiers and
   operator reports from the DigiDollar Gitter room; corrections from pre-release
