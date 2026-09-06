@@ -1,6 +1,6 @@
 # DigiDollar Integrator's Guide — what you can safely promise
 
-**Version 0.1.1 · 2026-09-05.** Describes DigiByte Core **v9.26.5** (the current
+**Version 0.1.2 · 2026-09-06.** Describes DigiByte Core **v9.26.5** (the current
 mainnet release). Every source file cited below was checked byte-identical on the
 `v9.26.4` and `v9.26.5` tags and on `develop` on 2026-09-05; if a later release touches
 one, the pin here is what this text describes. DigiDollar has been active on DigiByte mainnet since block
@@ -17,7 +17,7 @@ mainnet guarantee. The output-floor rules in §1 are from Shen (DigiByte Core) i
 [Core Discussion #425](https://github.com/orgs/DigiByte-Core/discussions/425), July
 2026. Chain-level facts are from this author's decoding of mainnet transactions
 ([week-one census, v3](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) — exact reconciliation with the
-node; raw records alongside) and from operating oracle slot 29 since activation. Where a code reference is
+node; raw records: [redemptions JSON](https://dgbinsights.com/census/redemptions-week1-v3.json), [186-record JSONL](https://dgbinsights.com/census/census-mainnet-week1.jsonl)) and from operating oracle slot 29 since activation. Where a code reference is
 given, it is the file the founder cited; verify against the release you build on.
 
 If you find an error, treat it as ours until shown otherwise, and open an issue.
@@ -61,7 +61,7 @@ on the type byte — never on transaction shape:
 | `01` | mint | the one DD output created, plus lock height and tier | nothing |
 | `02` | transfer | each DD output created, in order | nothing (Σ in = Σ out) |
 | `03` | redeem | the one *change* output created | consumed − change |
-| *(none)* | redeem, no payload | nothing — no DD output can be created | everything consumed |
+| *(none)* | redeem with **no DD record in the transaction at all** | nothing — no DD output can be created | everything consumed |
 
 **The rule that unifies them:** the payload is a ledger of *created* outputs. A
 redemption's amount field is its change, not its burn — burns are implicit. Two
@@ -71,7 +71,7 @@ week-one burn equalled the mint it closed, to the cent.
 **Decoder traps** (each one broke a real implementation; details in the census):
 walk pushes, never byte offsets (minimal-length amounts shift every later field) ·
 `0x00` is `OP_0`, a zero-length push meaning zero (how lock tier 0 is encoded — 16% of
-early mints) · `OP_1`–`OP_16` are single-byte numbers · a type-3 redemption looks
+early mints) · `OP_1`–`OP_16` are single-byte opcodes (`0x51`–`0x60`) that push the numbers 1–16 · a type-3 redemption looks
 exactly like a transfer by shape · the payload declares change, not burn.
 
 **Floors, from Core Discussion #425 (Shen):**
@@ -83,15 +83,20 @@ exactly like a transfer by shape · the payload declares change, not burn.
 - **Change must be exactly $0 or ≥ $1.** Paying $1.00 from a $1.50 output is
   *invalid* — it would create $0.50 of change. **Your coin selection must produce
   exact payment or leave at least $1 of change.** This is the sharpest edge in DD
-  integration and the one most likely to fail silently in testing.
+  integration and the one most likely to fail silently in testing. Every zero-change
+  redemption on mainnet so far has used the no-record form; whether a type-3 record
+  declaring $0 change is accepted is not verified here — do not rely on it.
 - Consequently: DGB is the micro-payment tier; DD is ≥ $1 on-chain settlement;
   sub-dollar DD flows are an application-layer concern (tabs, prepaid balances).
 
 **Standardness.** DigiByte's relay limit for an `OP_RETURN` output is
 `MAX_OP_RETURN_RELAY = 83` bytes of *script* (`src/policy/policy.h`): the `OP_RETURN`
 opcode, the push prefix, and up to **80 bytes of data**. An 80-byte payload relays;
-an 83-byte *payload* does not (our July test). Design any commitment you attach to a
-DD transaction inside 80 data bytes.
+an 83-byte *payload* does not (this author's July test). Standard policy also allows
+**one** `OP_RETURN` output per transaction (`multi-op-return`, `src/policy/policy.cpp`),
+and in a DD transaction that output *is* the DD record — so there is no separate canvas
+for a commitment of your own inside a DD transaction. Put commitments in a separate DGB
+transaction, within 80 data bytes.
 
 **Three more rules you hit on day one:**
 
@@ -108,8 +113,9 @@ DD transaction inside 80 data bytes.
 - **Fees are DGB.** DD outputs carry zero DGB, so every DD transaction needs a DGB
   input for fees. A fee-sponsorship design ("Paymaster", Shen) exists as a concept
   draft with a regtest prototype — [Discussion #430](https://github.com/orgs/DigiByte-Core/discussions/430)
-  — and is not a proposed consensus change. And reconcile balances from the chain, not a wallet UI:
-  operators reported DD change not appearing in the Core wallet (Gitter, Aug 2026).
+  — and is not a proposed consensus change.
+- **Reconcile from the chain, not a wallet UI.** Operators reported DD change not
+  appearing in the Core wallet (DigiDollar Gitter room, Aug 2026).
 
 A reference decoder with test vectors exists: `dgb-digidollar-codec` 0.2.0 on npm
 (186 week-one census records plus live fixtures; MIT), and `dd-explain-mcp` 1.0.0 for
@@ -123,7 +129,7 @@ The source comment reads *"NO early redemption, NO forced liquidation, NO
 exceptions."* Lock tiers observed on mainnet: 0 (~1 hour, test), 1 (30 days), 2 (90
 days), 3 (180 days), 4 (1 year), 5 (2 y), 6 (3 y), 7 (5 y), 8 (7 y), 9 (10 y).
 
-**Units traps in public feeds** (ours and, likely, others'): supply figures in cents;
+**Units traps in public feeds** (the dgbinsights feeds and, likely, others'): supply figures in cents;
 the oracle price in dollars only in `price_usd` (`price_cents` rounds sub-cent DGB
 to 0); 24-hour range fields in cents. Divide before you chart.
 
@@ -212,7 +218,7 @@ guarantee that every holder or vault owner can exit.*
 
 - Price comes from a **MuSig2 quorum of 7 signatures from 35 configured oracle
   keys**, aggregated into one Schnorr signature plus a participation bitmap that
-  miners embed in the coinbase (v0x03 `OP_ORACLE` bundle); every full node validates
+  miners embed in the coinbase (`OP_ORACLE` bundle, version byte `0x03`); every full node validates
   it on `CheckBlock`. Quotes are valid for a bounded number of blocks (20 at the time
   of writing — read `validity_blocks` from `getoracleprice`).
 - The threshold favors **liveness** over collusion resistance: seven valid
@@ -262,7 +268,7 @@ protection — which types depends on the tier reached. Thresholds in
 | ≥ 20% over one hour | new **minting** frozen |
 | ≥ 30% over 24 hours | **all** DD operations frozen — including ordinary transfers |
 | ≥ 50% over seven days | **emergency** all-operations freeze |
-| release | no earlier than the block *after* the **8,640-block cooldown (~36 hours)** — `currentHeight > cooldownEndHeight` — *and* only once every window is back under a **stricter** bar: 1h < 10%, 24h < 20%, 7d < 30% (`VolatilityMonitor::UpdateState()`, `src/consensus/volatility.cpp` — the recovery checks reuse the next-lower trigger constants, so a freeze never lifts at the level that caused it) |
+| release | no earlier than the block *after* the **8,640-block cooldown (~36 hours)** — `currentHeight > cooldownEndHeight` — *and* only once every window is back under a **stricter** bar: 1h < 10%, 24h < 20%, 7d < 30% (`VolatilityMonitor::UpdateState()`, `src/consensus/volatility.cpp` — the recovery checks reuse the next-lower threshold constants — the 1h bar is the 10% *warning* level — so a freeze never lifts at the level that caused it) |
 
 State derives deterministically from accepted on-chain oracle prices, heights, and
 block order (`VolatilityMonitor::UpdateState()`), and follows reorgs
@@ -333,7 +339,8 @@ the chain, because owner willingness and key availability are not on it.
 **Public instruments** (independent, non-authoritative — reconcile against your own
 node): [dgbinsights.com](https://dgbinsights.com) — a 5-minute snapshot feed since
 activation, a daily archive retained since activation (as of 2026-09-05), the
-[week-one census](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) with raw records, and a
+[week-one census](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) with raw records
+([redemptions JSON](https://dgbinsights.com/census/redemptions-week1-v3.json), [186-record JSONL](https://dgbinsights.com/census/census-mainnet-week1.jsonl)), and a
 documented API with the units traps spelled out. A position scanner producing the
 maturity ladder, matured-unredeemed set, and an oracle participation history from
 the coinbase bitmaps is in progress there.
@@ -362,6 +369,12 @@ new chain scan.
 
 ## 10. Changelog and terms
 
+- **0.1.2 — 2026-09-06.** §1: a DD transaction's single `OP_RETURN` is the DD record,
+  so commitments need their own transaction; the no-record redemption row made
+  explicit; zero-change redemptions noted as unverified for type 3; `OP_1`–`OP_16`
+  called opcodes; wallet-reconciliation bullet separated; first-person slips removed.
+  §5 bundle notation. §6: the 1h recovery bar named as the warning level. Census raw
+  records (JSON and 186-record JSONL) published and linked.
 - **0.1.1 — 2026-09-05.** Review corrections on the published text: header section
   pins; confirmed-only DD inputs stated as consensus, not policy; Paymaster cited to
   Discussion #430 as a concept draft; NUMS wording; the quote-validity grace before
