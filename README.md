@@ -1,6 +1,6 @@
 # DigiDollar Integrator's Guide — what you can safely promise
 
-**Version 0.1.2 · 2026-09-06.** Describes DigiByte Core **v9.26.5** (the current
+**Version 0.1.3 · 2026-09-07.** Describes DigiByte Core **v9.26.5** (the current
 mainnet release). Every source file cited below was checked byte-identical on the
 `v9.26.4` and `v9.26.5` tags and on `develop` on 2026-09-05; if a later release touches
 one, the pin here is what this text describes. DigiDollar has been active on DigiByte mainnet since block
@@ -342,8 +342,10 @@ activation, a daily archive retained since activation (as of 2026-09-05), the
 [week-one census](https://dgbinsights.com/census/DD_MAINNET_CENSUS_W1_v3.md) with raw records
 ([redemptions JSON](https://dgbinsights.com/census/redemptions-week1-v3.json), [186-record JSONL](https://dgbinsights.com/census/census-mainnet-week1.jsonl)), and a
 documented API with the units traps spelled out. A position scanner producing the
-maturity ladder, matured-unredeemed set, and an oracle participation history from
-the coinbase bitmaps is in progress there.
+maturity ladder and matured-unredeemed set, and an oracle participation history from
+the coinbase bitmaps, are planned there and **not yet built** (Core feature request
+[#428](https://github.com/DigiByte-Core/digibyte/issues/428), a global positions RPC,
+is open with no reply); until they exist, nobody publishes those numbers.
 
 **Reconciliation discipline that has worked:** derive every figure two ways (chain
 walk and node RPC) at the same height, publish the raw records, and treat a
@@ -369,6 +371,8 @@ new chain scan.
 
 ## 10. Changelog and terms
 
+- **0.1.3 — 2026-09-07.** §8: the position scanner and participation ledger stated as
+  not yet built, not "in progress" (review finding).
 - **0.1.2 — 2026-09-06.** §1: a DD transaction's single `OP_RETURN` is the DD record,
   so commitments need their own transaction; the no-record redemption row made
   explicit; zero-change redemptions noted as unverified for type 3; `OP_1`–`OP_16`
