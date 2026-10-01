@@ -1,6 +1,6 @@
 # DigiDollar Integrator's Guide — what you can safely promise
 
-**Version 0.1.3 · 2026-09-07.** Describes DigiByte Core **v9.26.5** (the current
+**Version 0.1.4 · 2026-10-01.** Describes DigiByte Core **v9.26.5** (the current
 mainnet release). Every source file cited below was checked byte-identical on the
 `v9.26.4` and `v9.26.5` tags and on `develop` on 2026-09-05; if a later release touches
 one, the pin here is what this text describes. DigiDollar has been active on DigiByte mainnet since block
@@ -8,6 +8,36 @@ one, the pin here is what this text describes. DigiDollar has been active on Dig
 permanent guarantee — the founder characterizes DigiDollar as still under active
 development, and no change described as possible should be treated as committed
 until it is implemented, tested, and given an activation path.
+
+> **Notice, 2026-10-01 — a mandatory release supersedes the pin above.** DigiByte Core
+> **v9.26.6** was published on 2026-10-01. It is mandatory for every full node and miner
+> before mainnet block **24,490,000**, when new DigiDollar block rules ("Thaw Day") activate
+> (`consensus.nDDThawDayHeight`, `src/kernel/chainparams.cpp`). Activation is determined by
+> block height, not by date; the estimate is around 1 November 2026. Installing v9.26.6 does
+> not itself switch the rules. This guide still describes v9.26.5. Per the v9.26.6 release
+> notes, these statements below change at that height:
+>
+> 1. **§6 and §9, transfers and redemptions.** They stop using the volatility freeze; their
+>    other requirements still apply. The §6 freeze table, the "all operations, including
+>    ordinary transfers" language, the §9 row saying a volatility freeze can halt transfers,
+>    and the transfer clause of the founder's recommended disclosure in §0 describe behavior
+>    below block 24,490,000. The founder's words are left as he wrote them.
+> 2. **§6, minting.** The one-hour mint freeze is replaced by a check of the mint price
+>    against prices already recorded in the chain (`MINT_MAX_DEVIATION_BPS = 2000`,
+>    `MINT_REFERENCE_MIN_DEPTH = 240`, `MINT_REFERENCE_MAX_DEPTH = 1440`,
+>    `src/consensus/volatility.h`). Large price swings can still pause minting. The full
+>    rule will be described in the revision of this guide.
+> 3. **§§3 and 8, system health.** Health will count the original DD amounts of vaults that
+>    remain open, reported by `getdigidollarstats` as `open_vault_principal`, separately from
+>    circulating supply. That can lower reported health and raise the DD required in an
+>    emergency redemption. The settlement policy in §6 is this author's and is also written
+>    for the rules below that height.
+>
+> Unchanged, per the same notes: the $1 minimum DD output, the oracle signing keys, and the
+> required agreement. Most Core files cited here changed in v9.26.6, so the byte-identical
+> statement above covers v9.26.4, v9.26.5 and `develop` as of 2026-09-05 only. Until this
+> guide is revised against the v9.26.6 source, its body describes the v9.26.5 rules below
+> block 24,490,000 and is unverified at or above it.
 
 **Sources, with attribution.** The design rulings in §§2–7 are the written answers
 of Jared Tate (DigiByte founder and maintainer) to this author's integrator
@@ -371,6 +401,9 @@ new chain scan.
 
 ## 10. Changelog and terms
 
+- **0.1.4 — 2026-10-01.** Notice added: DigiByte Core v9.26.6 is mandatory before mainnet
+  block 24,490,000, where the freeze rules in §6 and §9 and the health figures change. Body
+  not yet revised.
 - **0.1.3 — 2026-09-07.** §8: the position scanner and participation ledger stated as
   not yet built, not "in progress" (review finding).
 - **0.1.2 — 2026-09-06.** §1: a DD transaction's single `OP_RETURN` is the DD record,
