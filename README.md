@@ -1,6 +1,6 @@
 # DigiDollar Integrator's Guide — what you can safely promise
 
-**Version 0.1.4 · 2026-10-01.** Describes DigiByte Core **v9.26.5** (the current
+**Version 0.1.5 · 2026-10-02.** Describes DigiByte Core **v9.26.5** (the current
 mainnet release). Every source file cited below was checked byte-identical on the
 `v9.26.4` and `v9.26.5` tags and on `develop` on 2026-09-05; if a later release touches
 one, the pin here is what this text describes. DigiDollar has been active on DigiByte mainnet since block
@@ -28,9 +28,12 @@ until it is implemented, tested, and given an activation path.
 >    `src/consensus/volatility.h`). Large price swings can still pause minting. The full
 >    rule will be described in the revision of this guide.
 > 3. **§§3 and 8, system health.** Health will count the original DD amounts of vaults that
->    remain open, reported by `getdigidollarstats` as `open_vault_principal`, separately from
->    circulating supply. That can lower reported health and raise the DD required in an
->    emergency redemption. The settlement policy in §6 is this author's and is also written
+>    remain open, separately from circulating supply. In `getdigidollarstats` on v9.26.6 the
+>    field `selected_health_denominator` names the total in use: it reads `legacy_supply`
+>    until activation and `open_vault_principal` after it, with the amount in
+>    `health_denominator_cents` (null when unavailable, which is not zero). Installing
+>    v9.26.6 changes none of these figures before the height. The new denominator can lower
+>    reported health and raise the DD required in an emergency redemption. The settlement policy in §6 is this author's and is also written
 >    for the rules below that height.
 >
 > Unchanged, per the same notes: the $1 minimum DD output, the oracle signing keys, and the
@@ -401,6 +404,10 @@ new chain scan.
 
 ## 10. Changelog and terms
 
+- **0.1.5 — 2026-10-02.** Correction to the notice: v9.26.6's `getdigidollarstats` has no
+  top-level `open_vault_principal` field. The selector `selected_health_denominator` and the
+  amount `health_denominator_cents` carry it, and the selector reads `legacy_supply` until
+  block 24,490,000 (confirmed on an upgraded mainnet node). The 0.1.4 wording was ours.
 - **0.1.4 — 2026-10-01.** Notice added: DigiByte Core v9.26.6 is mandatory before mainnet
   block 24,490,000, where the freeze rules in §6 and §9 and the health figures change. Body
   not yet revised.
